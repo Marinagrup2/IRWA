@@ -23,6 +23,7 @@ so we have both keys in the same line to pass to the build_terms and we can take
 while also keeping them separately from the tweet content
 
 2. Exploratory Data Analysis
+
 Word count and top words:
 The objective is to print the top 10 most frequent words in a collection of tweets. To achieve this, we do the following process:
 content_terms = content_words():
