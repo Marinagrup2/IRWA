@@ -23,6 +23,8 @@ so we have both keys in the same line to pass to the build_terms and we can take
 while also keeping them separately from the tweet content
 
 2. Exploratory Data Analysis
+To execute our exploratory data analysis it can be done in the part1 or in the separate colab "Program_Part1_Text Processing and Exploratory Data Analysis"
+where after executing all the cells, the user is asked to insert the number of the analysis they want to see and it shows one of the following functions
 
 Word count and top words:
 The objective is to print the top 10 most frequent words in a collection of tweets. To achieve this, we do the following process:
