@@ -12,7 +12,7 @@ class AnalyticsData:
     fact_clicks = dict([])
 
     # statistics table 2
-    fact_two = dict([])
+    fact_queries = dict([])
 
     # statistics table 3
     fact_three = dict([])
@@ -20,6 +20,7 @@ class AnalyticsData:
     def save_query_terms(self, terms: str) -> int:
         print(self)
         return random.randint(0, 100000)
+
 
 
 class ClickedDoc:

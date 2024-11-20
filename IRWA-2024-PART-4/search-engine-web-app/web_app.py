@@ -1,5 +1,6 @@
 import os
 from json import JSONEncoder
+import random
 
 # pip install httpagentparser
 import httpagentparser  # for getting the user agent as json
@@ -12,6 +13,19 @@ from myapp.search.load_corpus import load_corpus
 from myapp.search.objects import Document, StatsDocument
 from myapp.search.search_engine import SearchEngine
 
+from datetime import datetime
+import altair as alt
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from wordcloud import WordCloud
+import folium
+from collections import Counter
+from nltk.corpus import stopwords
+import nltk
+
+# Ensure you have the necessary NLTK resources
+nltk.download('stopwords')
 
 # *** for using method to_json in objects ***
 def _default(self, obj):
@@ -84,10 +98,21 @@ def search_form_post():
 
     found_count = len(results)
     session['last_found_count'] = found_count
-
+    
     print(session)
 
     return render_template('results.html', results_list=results, page_title="Results", found_counter=found_count)
+
+@app.before_request
+def track_session_start():
+    """Track session start time."""
+    if 'session_start' not in session:
+        session['session_start'] = datetime.now().isoformat()
+
+@app.teardown_request
+def track_session_end(exception=None):
+    """Track session end time."""
+    session['session_end'] = datetime.now().isoformat()
 
 
 @app.route('/doc_details', methods=['GET'])
@@ -97,6 +122,7 @@ def doc_details():
 
     print("doc details session: ")
     print(session)
+    
 
     res = session["some_var"]
 
@@ -104,10 +130,19 @@ def doc_details():
 
     # get the query string parameters from request
     clicked_doc_id = request.args["id"]
+    search_id = int(request.args["search_id"])  # Transform to Integer
+    timestamp = datetime.now() #time when user clicked on that doc
+
     p1 = int(request.args["search_id"])  # transform to Integer
     p2 = int(request.args["param2"])  # transform to Integer
     print("click in id={}".format(clicked_doc_id))
 
+    # Update analytics_data with clicked document and timestamp
+    if 'clicked_docs' not in session:
+        session['clicked_docs'] = []
+
+    session['clicked_docs'].append({'doc_id': clicked_doc_id, 'timestamp': timestamp.isoformat()}) #save the clicked docs and the time they were clicked
+    
     # store data in statistics table 1
     if clicked_doc_id in analytics_data.fact_clicks.keys():
         analytics_data.fact_clicks[clicked_doc_id] += 1
@@ -140,6 +175,50 @@ def stats():
     return render_template('stats.html', clicks_data=docs)
     # ### End replace with your code ###
 
+'''
+@app.route('/stats', methods=['GET'])
+def stats():
+    session_start = session.get('session_start')
+    session_end = session.get('session_end')
+    total_time = "N/A"
+
+    #session time
+    if session_start and session_end:
+        start_time = datetime.fromisoformat(session_start)
+        end_time = datetime.fromisoformat(session_end)
+        total_time = str(end_time - start_time)  # Total session time
+
+    #clicked documents 
+    clicked_docs = []
+    for doc_id, timestamp in analytics_data.fact_clicks.items(): #s'haura de canviar pels clicked documents segons sessió
+        row: Document = corpus[int(doc_id)]
+        clicked_docs.append(StatsDocument(row.id, row.title, row.description, row.doc_date, row.url, timestamp))
+
+    # queries
+    queries = [{"query": query} for query in analytics_data.fact_queries] #aqui tmb canviar per queries nomes de la sessió
+
+    df = pd.DataFrame(clicked_docs)
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['time_diff'] = df['timestamp'].diff().dt.total_seconds()
+
+    # Create the Altair chart
+    chart = alt.Chart(df).mark_line(point=True).encode(
+        x='timestamp:T',
+        y='time_diff:Q',
+        tooltip=['doc_id', 'title', 'time_diff']
+    ).properties(
+        title='Time Difference Between Document Clicks',
+        width=600,
+        height=400
+    )
+    chart_html = chart.to_html()
+
+    return render_template('stats.html',
+                           clicks_data=clicked_docs,
+                           queries=queries,
+                           total_time=total_time,
+                           chart_html=chart_html)
+'''
 
 @app.route('/dashboard', methods=['GET'])
 def dashboard():
@@ -156,6 +235,102 @@ def dashboard():
     for doc in visited_docs: print(doc)
     return render_template('dashboard.html', visited_docs=visited_docs)
 
+'''
+@app.route('/dashboard', methods=['GET'])
+def dashboard():
+    # Prepare the clicked documents data
+    visited_docs = []
+    for doc_id in analytics_data.fact_clicks.keys():
+        d: Document = corpus[int(doc_id)]
+        doc = ClickedDoc(doc_id, d.description, analytics_data.fact_clicks[doc_id])
+        visited_docs.append(doc)
+
+    # Simulate sorting by ranking (most clicked first)
+    visited_docs.sort(key=lambda doc: doc.counter, reverse=True)
+
+    # Prepare query data for analysis (number of terms, most common words)
+    query_terms = [query.split() for query in analytics_data.fact_queries]  # List of lists of words
+    all_query_terms = [term for sublist in query_terms for term in sublist]  # Flatten list
+
+    # Remove stopwords
+    stop_words = set(stopwords.words('english'))
+    filtered_query_terms = [term for term in all_query_terms if term.lower() not in stop_words]
+
+    # Word cloud generation
+    wordcloud = WordCloud(width=800, height=400).generate(' '.join(filtered_query_terms))
+    wordcloud_img = wordcloud.to_image()
+
+    # Histogram of number of terms in queries
+    query_lengths = [len(query.split()) for query in analytics_data.fact_queries]
+    query_length_histogram = plt.figure(figsize=(6, 4))
+    sns.histplot(query_lengths, bins=range(min(query_lengths), max(query_lengths) + 1), kde=False)
+    plt.title('Histogram of Query Lengths')
+    plt.xlabel('Number of Terms in Query')
+    plt.ylabel('Frequency')
+    query_length_histogram_img = 'static/images/histogram.png'
+    query_length_histogram.savefig(query_length_histogram_img)
+
+    # Browser and OS distribution (you'll need to parse this from the user-agent data stored earlier)
+    browsers = [agent.get('browser', 'unknown') for agent in analytics_data.fact_clicks.values()]
+    operating_systems = [agent.get('os', 'unknown') for agent in analytics_data.fact_clicks.values()]
+
+    # Plot browser distribution
+    browser_count = Counter(browsers)
+    browser_count_plot = plt.figure(figsize=(8, 6))
+    sns.barplot(x=list(browser_count.keys()), y=list(browser_count.values()))
+    plt.title('Browser Distribution')
+    plt.xlabel('Browser')
+    plt.ylabel('Count')
+    browser_count_plot_img = 'static/images/browser_distribution.png'
+    browser_count_plot.savefig(browser_count_plot_img)
+
+    # Plot OS distribution
+    os_count = Counter(operating_systems)
+    os_count_plot = plt.figure(figsize=(8, 6))
+    sns.barplot(x=list(os_count.keys()), y=list(os_count.values()))
+    plt.title('Operating System Distribution')
+    plt.xlabel('OS')
+    plt.ylabel('Count')
+    os_count_plot_img = 'static/images/os_distribution.png'
+    os_count_plot.savefig(os_count_plot_img)
+
+    # Plot visitors per day (using a timestamp from clicks)
+    click_times = [doc.timestamp for doc in visited_docs]
+    visitor_dates = pd.to_datetime(click_times).dt.date
+    visitors_per_day = pd.Series(visitor_dates).value_counts().sort_index()
+    visitors_per_day_plot = visitors_per_day.plot(kind='line', figsize=(10, 6))
+    visitors_per_day_plot.set_title('Visitors Per Day')
+    visitors_per_day_plot.set_xlabel('Date')
+    visitors_per_day_plot.set_ylabel('Number of Visitors')
+    visitors_per_day_plot_img = 'static/images/visitors_per_day.png'
+    visitors_per_day_plot.get_figure().savefig(visitors_per_day_plot_img)
+
+    # Collect IP-related data (IP, Country, City, Browser, OS)
+    visitor_data = []
+    for ip, data in analytics_data.fact_clicks.items():
+        country = data['country']
+        city = data['city']
+        browser = data['browser']
+        os = data['os']
+        
+        # Create a row for each visitor
+        visitor_data.append({
+            'ip': ip,
+            'country': country,
+            'city': city,
+            'browser': browser,
+            'os': os
+        })
+    # Render the dashboard template with all the data and visualizations
+    return render_template('dashboard.html', 
+                           visited_docs=visited_docs,
+                           visitor_data=visitor_data,
+                           wordcloud_img=wordcloud_img,
+                           query_length_histogram_img=query_length_histogram_img,
+                           browser_count_plot_img=browser_count_plot_img,
+                           os_count_plot_img=os_count_plot_img,
+                           visitors_per_day_plot_img=visitors_per_day_plot_img)
+'''
 
 @app.route('/sentiment')
 def sentiment_form():
