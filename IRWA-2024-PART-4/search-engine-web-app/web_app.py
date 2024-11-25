@@ -23,7 +23,32 @@ import folium
 from collections import Counter
 from nltk.corpus import stopwords
 import nltk
+from myapp.analytics.analytics_database import AnalyticsDatabase
 
+
+# Crear instancia de la base de datos
+analytics_db = AnalyticsDatabase()
+
+# Inicializar la base de datos
+analytics_db.init_db()
+
+##############3
+# En caso de que por cada sesion queramos resetear el numero de clicks en count_clicks.py descomentar el codigo siguiente
+'''
+def reset_clicks():
+    """
+    Reset the clicks table by deleting all records.
+    """
+    query = "DELETE FROM click"
+    with sqlite3.connect(analytics_db.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(query)
+        conn.commit()
+    print("Clicks table has been reset.")
+
+# Llama a esta función al iniciar la aplicación
+reset_clicks()
+'''
 # Ensure you have the necessary NLTK resources
 nltk.download('stopwords')
 
@@ -85,7 +110,7 @@ def index():
 
     return render_template('index.html', page_title="Welcome")
 
-
+'''
 @app.route('/search', methods=['POST'])
 def search_form_post():
     search_query = request.form['search-query']
@@ -102,19 +127,83 @@ def search_form_post():
     print(session)
 
     return render_template('results.html', results_list=results, page_title="Results", found_counter=found_count)
+'''
+@app.route('/search', methods=['POST'])
+def search_form_post():
+    search_query = request.form['search-query']
+    session_id = session['session_id']
 
+    # Guardar la consulta en memoria
+    search_id = analytics_data.save_query_terms(search_query)
+
+    # Guardar la consulta en SQLite
+    analytics_db.save_query(
+        session_id=session_id,
+        query_text=search_query,
+        timestamp=datetime.now().isoformat()
+    )
+
+    # Realizar la búsqueda
+    results = search_engine.search(search_query, search_id, corpus)
+
+    return render_template('results.html', results_list=results, page_title="Results", found_counter=len(results))
+
+
+'''
 @app.before_request
 def track_session_start():
-    """Track session start time."""
-    if 'session_start' not in session:
-        session['session_start'] = datetime.now().isoformat()
+    """Track session start."""
+    if 'session_id' not in session:
+        session_id = random.randint(0, 100000)
+        session['session_id'] = session_id
+        analytics_db.save_session(
+            session_id=session_id,
+            ip=request.remote_addr,
+            user_agent=request.headers.get('User-Agent'),
+            start_time=datetime.now().isoformat()
+        )
+
+'''
+@app.before_request
+def track_session_start():
+    """Track session start."""
+    if 'session_id' not in session:
+        session_id = random.randint(0, 100000)
+        session['session_id'] = session_id
+        
+        # Guardar la sesión en memoria
+        analytics_data.save_session(
+            session_id=session_id,
+            ip=request.remote_addr,
+            user_agent=request.headers.get('User-Agent'),
+            start_time=datetime.now().isoformat()
+        )
+
+        # Guardar la sesión en SQLite
+        analytics_db.save_session(
+            session_id=session_id,
+            ip=request.remote_addr,
+            user_agent=request.headers.get('User-Agent'),
+            start_time=datetime.now().isoformat()
+        )
+
 
 @app.teardown_request
 def track_session_end(exception=None):
     """Track session end time."""
-    session['session_end'] = datetime.now().isoformat()
+    if 'session_id' in session:
+        end_time = datetime.now().isoformat()
+
+        # Finalizar la sesión en memoria
+        analytics_data.end_session(session['session_id'], end_time)
+
+        # Finalizar la sesión en SQLite
+        analytics_db.end_session(session['session_id'], end_time)
+    #session['session_end'] = datetime.now().isoformat()
 
 
+
+'''
 @app.route('/doc_details', methods=['GET'])
 def doc_details():
     # getting request parameters:
@@ -138,20 +227,46 @@ def doc_details():
     print("click in id={}".format(clicked_doc_id))
 
     # Update analytics_data with clicked document and timestamp
-    if 'clicked_docs' not in session:
-        session['clicked_docs'] = []
-
-    session['clicked_docs'].append({'doc_id': clicked_doc_id, 'timestamp': timestamp.isoformat()}) #save the clicked docs and the time they were clicked
-    
-    # store data in statistics table 1
-    if clicked_doc_id in analytics_data.fact_clicks.keys():
-        analytics_data.fact_clicks[clicked_doc_id] += 1
-    else:
-        analytics_data.fact_clicks[clicked_doc_id] = 1
-
+    analytics_db.save_click(
+        session_id=session_id,
+        doc_id=clicked_doc_id,
+        timestamp=datetime.now().isoformat()
+    )
     print("fact_clicks count for id={} is {}".format(clicked_doc_id, analytics_data.fact_clicks[clicked_doc_id]))
 
     return render_template('doc_details.html')
+'''
+
+@app.route('/doc_details', methods=['GET'])
+def doc_details():
+    """
+    Handle document click event and save it to the database.
+    """
+    print("doc details session: ")
+    print(session)
+
+    # Recuperar la variable 'session_id' desde la sesión de Flask
+    session_id = session.get('session_id')  # Obtén session_id de la sesión
+    if not session_id:
+        return "Session ID not found", 400
+
+    # Obtén los parámetros de la solicitud
+    clicked_doc_id = request.args.get("id")
+    search_id = request.args.get("search_id")  # Aquí no necesitas convertirlo si ya es un string
+    timestamp = datetime.now()  # Hora en que el usuario hizo clic en el documento
+
+    if not clicked_doc_id or not search_id:
+        return "Missing parameters", 400
+
+    # Guarda el clic en la base de datos
+    analytics_db.save_click(
+        session_id=session_id,
+        doc_id=clicked_doc_id,
+        timestamp=timestamp.isoformat()
+    )
+    print(f"Click registrado: {clicked_doc_id} en la sesión {session_id}")
+
+    return f"Document {clicked_doc_id} clicked and registered.", 200
 
 
 @app.route('/stats', methods=['GET'])
@@ -349,3 +464,28 @@ def sentiment_form_post():
 
 if __name__ == "__main__":
     app.run(port=8088, host="0.0.0.0", threaded=False, debug=True)
+
+'''
+@app.route('/view_clicks')
+def view_clicks():
+    """
+    Display the list of clicks from the database.
+    """
+    query = "SELECT * FROM click"
+    with sqlite3.connect(analytics_db.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(query)
+        clicks = cursor.fetchall()
+    return render_template('view_clicks.html', clicks=clicks)
+'''
+@app.route('/clicks_count')
+def clicks_count():
+    """
+    Display the total number of clicks.
+    """
+    query = "SELECT COUNT(*) FROM click"
+    with sqlite3.connect(analytics_db.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(query)
+        total_clicks = cursor.fetchone()[0]
+    return f"Total clicks: {total_clicks}"
