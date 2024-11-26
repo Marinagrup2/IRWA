@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block content %}
+    <h2>Session Statistics</h2>
+
+    <h4>Session Duration:</h4>
+    <p>Total Time: <strong>{{ total_time }}</strong></p>
+
+    <hr>
+
+    <h4>Queries Issued:</h4>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Query</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for query in queries %}
+            <tr>
+                <td>{{ query.query }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <hr>
+
+    <h4>Clicked Documents:</h4>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Document ID</th>
+                <th>Title</th>
+                <th>Description</th>
+                <th>Timestamp</th>
+                <th>Time Difference (seconds)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for doc in clicks_data %}
+            <tr>
+                <td>{{ doc.id }}</td>
+                <td>{{ doc.title }}</td>
+                <td>{{ doc.description }}</td>
+                <td>{{ doc.timestamp }}</td>
+                <td>{{ doc.time_diff }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <hr>
+
+    <h4>Timeline of Document Clicks:</h4>
+    <div>
+        {{ chart_html | safe }}
+    </div>
+{% endblock %}

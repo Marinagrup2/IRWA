@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {# Using Bootstrap v4.6.1 #}
+    <link rel="stylesheet" href="{{ url_for('static',filename='styles/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static',filename='styles/custom.css') }}">
+    <title>{% block page_title %}{% endblock %} - IRWA Search Engine</title>
+    {% block header %}{% endblock %}
+</head>
+<body>
+<div class="container">
+    <!-- menu to go to the analytics pages -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <a class="navbar-brand" href="/">
+            <img src="{{ url_for('static', filename='logo.png') }}" width="100" alt="IRWA logo">
+        </a>
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav">
+                
+                <li class="nav-item">
+                    <a class="nav-link" href="/dashboard">Dashboard</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/stats">Session Stats</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/sentiment">Sentiment Analysis</a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+    <hr>
+    <div class='header text-center'>
+        <a href="/">
+            <img src="{{ url_for('static', filename='logo.png') }}" width="100" alt="UPF logo"/>
+        </a>
+        <span> IRWA Search Engine </span>
+    </div>
+    <hr>
+    <div class='content'>
+        {% block content %}
+            base
+        {% endblock %}
+    </div>
+    <hr>
+    <div class='centered'> 24952 - Information Retrieval and Web Analytics</div>
+</div>
+</body>
+</html>
