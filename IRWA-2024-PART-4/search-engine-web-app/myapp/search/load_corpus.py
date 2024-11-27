@@ -41,17 +41,18 @@ def _load_corpus_as_dataframe(path):
     df = pd.DataFrame(data_list)
     
     for index, row in df.iterrows():
-        user_name = row['user']['username'] # Access the 'username' key
-        profile_pic = row['user']['profileImageUrl']
-        tweet_id = row['id']
+        tweet_url = row["url"]
         tweet_content = row['content']
         hashtags = [tag[1:] for tag in re.findall(r'#\w+', tweet_content) for _ in range(3)]
+        user_name = row['user']['username'] # Access the 'username' key
+        profile_pic = row['user']['profileImageUrl']
+        
 
         # Create the 'Url' and 'Hashtags' column for each row
-        df.at[index, "Url"] = f"https://twitter.com/{user_name}/status/{tweet_id}"
-        df.at[index, "Hashtags"] = len(hashtags)
-        df.at[index, "Profile_pic"] = profile_pic
+        df.at[index, "Url"] = tweet_url
+        df.at[index, "Hashtags"] = len(hashtags) #NOTA: ESTO HAN DE SER LOS HASTAGS COMO LISTA, NO COMO NUMERO
         df.at[index, "Username"] = user_name
+        df.at[index, "Profile_pic"] = profile_pic
 
     df = df.rename(columns={
         "id": "Id",
