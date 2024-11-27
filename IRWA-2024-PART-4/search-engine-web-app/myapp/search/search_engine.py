@@ -1,6 +1,7 @@
 import random
 
 from myapp.search.objects import ResultItem, Document
+from myapp.search.algorithms import search_in_corpus
 
 
 def build_demo_results(corpus: dict, search_id):
@@ -34,9 +35,11 @@ class SearchEngine:
 
         results = []
         ##### your code here #####
-        results = build_demo_results(corpus, search_id)  # replace with call to search algorithm
+        #results = build_demo_results(corpus, search_id)  # replace with call to search algorithm
+        results = search_in_corpus(corpus, search_query)
 
         # results = search_in_corpus(search_query)
         ##### your code here #####
+        
 
         return results
