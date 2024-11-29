@@ -3,7 +3,7 @@ import pandas as pd
 from myapp.core.utils import load_json_file
 from myapp.search.objects import Document
 
-from pandas import json_normalize
+#from pandas import json_normalize
 import json
 import re
 
@@ -27,43 +27,22 @@ def _load_corpus_as_dataframe(path):
     Load documents corpus from file in 'path'
     :return:
     """
-    data_list = []
-
-    #read all lines
-    with open(path) as f:
-        for line in f:
-            # Parse the string into a JSON object
-            json_data = json.loads(line)
-            # Append the JSON object to the list
-            data_list.append(json_data)
-
-    # Convert the list of JSON objects to a DataFrame
-    df = pd.DataFrame(data_list)
+    with open(path, 'r') as json_file:
+        data = json.load(json_file)
     
-    for index, row in df.iterrows():
-        tweet_url = row["url"]
-        tweet_content = row['content']
-        hashtags = [tag[1:] for tag in re.findall(r'#\w+', tweet_content) for _ in range(3)]
-        user_name = row['user']['username'] # Access the 'username' key
-        profile_pic = row['user']['profileImageUrl']
-        
-
-        # Create the 'Url' and 'Hashtags' column for each row
-        df.at[index, "Url"] = tweet_url
-        df.at[index, "Hashtags"] = len(hashtags) #NOTA: ESTO HAN DE SER LOS HASTAGS COMO LISTA, NO COMO NUMERO
-        df.at[index, "Username"] = user_name
-        df.at[index, "Profile_pic"] = profile_pic
-
-    df = df.rename(columns={
+    data = pd.DataFrame(data)
+    
+    corpus = data.rename(columns={
         "id": "Id",
         "content": "Tweet",
-        "username": "Username",
         "date": "Date",
         "likeCount": "Likes",
         "retweetCount": "Retweets",
-        "lang": "Language"
+        "hashtags": "Hashtags",
+        "url": "Url"
     })
-    return df
+    
+    return corpus
 
 def _row_to_doc_dict(row: pd.Series):
     _corpus[row['Id']] = Document(row['Id'], row['Tweet'][0:100], row['Tweet'], row['Date'], row['Likes'],

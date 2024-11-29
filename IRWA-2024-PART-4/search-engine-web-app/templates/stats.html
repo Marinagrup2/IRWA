@@ -29,26 +29,26 @@
     <h4>Clicked Documents:</h4>
     <table class="table table-striped">
         <thead>
-            <tr>
-                <th>Document ID</th>
-                <th>Title</th>
-                <th>Description</th>
-                <th>Timestamp</th>
-                <th>Time Difference (seconds)</th>
-            </tr>
+          <tr>
+            <th>Document ID</th>
+            <th>Title</th>
+            <th>Description</th>
+            <th>Timestamp</th>
+            <th>Time Difference (min)</th>
+          </tr>
         </thead>
         <tbody>
-            {% for doc in clicks_data %}
-            <tr>
-                <td>{{ doc.id }}</td>
-                <td>{{ doc.title }}</td>
-                <td>{{ doc.description }}</td>
-                <td>{{ doc.timestamp }}</td>
-                <td>{{ doc.time_diff }}</td>
-            </tr>
-            {% endfor %}
+          {% for row in clicks_data %}
+          <tr>
+            <td>{{ row.doc_id }}</td>
+            <td>{{ row.title }}</td>
+            <td>{{ row.description }}</td>
+            <td>{{ row.timestamp }}</td>
+            <td>{{ row.time_diff_minutes }}</td>
+          </tr>
+          {% endfor %}
         </tbody>
-    </table>
+      </table>
 
     <hr>
 

@@ -3,6 +3,25 @@
 {% block content %}
     <h2>Dashboard</h2>
 
+    <h4>Visited Documents:</h4>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Document ID</th>
+                <th>Description</th>
+                <th>Click Count</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for doc in visited_docs %}
+            <tr>
+                <td>{{ doc.doc_id }}</td>
+                <td>{{ doc.description }}</td>
+                <td>{{ doc.counter }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
     <!-- Display IP, Country, City, Browser, OS -->
     <h4>Visitor Information</h4>
     <table class="table table-striped">
@@ -29,23 +48,34 @@
     </table>
 
     <!-- Word Cloud Visualization -->
-    <h4>Word Cloud of Search Queries</h4>
-    <img src="{{ url_for('static', filename=wordcloud_img_path) }}" alt="Word Cloud" class="img-fluid">
-
+    <h4>Word Cloud:</h4>
+    <div>
+        <img src="{{ url_for('static', filename='images/wordcloud.png') }}" alt="Word Cloud" width="800" height="400">
+    </div>
     <!-- Query Length Histogram -->
-    <h4>Histogram of Query Lengths</h4>
-    <img src="{{ url_for('static', filename=query_length_histogram_img_path) }}" alt="Query Length Histogram" class="img-fluid">
-
+    <h4>Histogram of Query Lengths:</h4>
+    <div>
+        {% if query_length_histogram_img %}
+            <img src="{{ url_for('static', filename='images/histogram.png') }}" alt="Query Length Histogram" width="800" height="400">
+        {% else %}
+            <p>No query data available for histogram generation.</p>
+        {% endif %}
+    </div>
     <!-- Browser Distribution -->
-    <h4>Browser Distribution</h4>
-    <img src="{{ url_for('static', filename=browser_count_plot_img_path) }}" alt="Browser Distribution" class="img-fluid">
+    <h4>Browser Distribution:</h4>
+    <div>
+        <img src="{{ url_for('static', filename='images/browser_distribution.png') }}" alt="Browser Distribution" width="800" height="400">
+    </div>
 
     <!-- Operating System Distribution -->
-    <h4>Operating System Distribution</h4>
-    <img src="{{ url_for('static', filename=os_count_plot_img_path) }}" alt="Operating System Distribution" class="img-fluid">
+    <h4>Operating System Distribution:</h4>
+    <div>
+        <img src="{{ url_for('static', filename='images/os_distribution.png') }}" alt="OS Distribution" width="800" height="400">
+    </div>
+    <!-- Unique Sessions Per Day -->
+    <h4>Unique Sessions Per Day:</h4>
+    <div>
+        <img src="{{ url_for('static', filename='images/unique_sessions_per_day.png') }}" alt="Unique Sessions Per Day" width="800" height="400">
+    </div>
 
-    <!-- Visitors Per Day Plot -->
-    <h4>Visitors Per Day</h4>
-    <img src="{{ url_for('static', filename=visitors_per_day_plot_img_path) }}" alt="Visitors Per Day" class="img-fluid">
-    
 {% endblock %}
