@@ -15,7 +15,7 @@ from myapp.search.objects import Document, StatsDocument
 from myapp.search.search_engine import SearchEngine
 from myapp.search.algorithms import create_index_tf_idf
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import altair as alt
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -25,16 +25,17 @@ import folium
 from collections import Counter
 from nltk.corpus import stopwords
 import nltk
-from myapp.analytics.analytics_database import AnalyticsDatabase
+from myapp.analytics.analytics_database import AnalyticsCSV
 import sqlite3
+import requests
+import csv
 
 
+# Initialize the analytics CSV handler
+analytics_csv = AnalyticsCSV('analytics.csv')
 
-# Crear instancia de la base de datos
-analytics_db = AnalyticsDatabase()
-
-# Inicializar la base de datos
-analytics_db.init_db()
+# Initialize the CSV file (creates the file with headers if it doesn't exist)
+analytics_csv.init_csv()
 
 ##############3
 # En caso de que por cada sesion queramos resetear el numero de clicks en count_clicks.py descomentar el codigo siguiente
@@ -88,6 +89,7 @@ path, filename = os.path.split(full_path)
 
 # load documents corpus into memory.
 file_path = path + "/tweets-data-who.json"
+CSV_FILE_PATH = path +  "/analytics.csv"
 corpus = load_corpus(file_path)
 print("loaded corpus. first elem:", list(corpus.values())[0])
 
@@ -111,6 +113,18 @@ else:
     with open(doc_for_idf, 'wb') as archivo:
         pickle.dump(idf, archivo)
 
+def get_last_timestamp_for_session(file_path, session_id):
+    """
+    Reads the CSV file and retrieves the last timestamp for a given session_id.
+    """
+    last_timestamp = None
+    with open(file_path, mode='r', newline='', encoding='utf-8') as file:
+        reader = csv.DictReader(file)  # Use DictReader for easier column handling
+        for row in reader:
+            if row['session_id'] == str(session_id):
+                # Update the last timestamp if found
+                last_timestamp = row['timestamp'] #reads all rows for the session id and stores the last timestamp
+    return last_timestamp
 
 # Home URL "/"
 @app.route('/')
@@ -124,12 +138,43 @@ def index():
     user_agent = request.headers.get('User-Agent')
     print("Raw user browser:", user_agent)
 
-    user_ip = request.remote_addr
+    ip_address = request.remote_addr
     agent = httpagentparser.detect(user_agent)
 
-    print("Remote IP: {} - JSON user browser {}".format(user_ip, agent))
+    print("Remote IP: {} - JSON user browser {}".format(ip_address, agent))
+    print("------------------")
+    print(agent)
+    # Extracting names
+    browser = agent['browser']['name']
+    operating_system = agent['os']['name']
 
-    print(session)
+    print("Browser:", browser)
+    print("Operating System:", operating_system)
+
+    # Check if session_id is in session and if it's still valid
+    current_time = datetime.now()
+    session_id = session.get('session_id')
+
+    if session_id:
+        # Get the last timestamp for the session from the CSV
+        last_timestamp_str = get_last_timestamp_for_session(analytics_csv.file_path, session_id)
+        if last_timestamp_str:
+            # Convert the timestamp to a datetime object
+            last_timestamp = datetime.fromisoformat(last_timestamp_str.split(",")[0])  # Remove milliseconds
+            if current_time - last_timestamp <= timedelta(hours=2):
+                # Session is still valid; no need to create a new one
+                return render_template('index.html', page_title="Welcome")
+    
+    # If no session_id exists or it has expired, create a new session
+    session['session_id'] = random.randint(1, 100000)
+    start_time = current_time.isoformat()
+
+    analytics_csv.save_session(
+        session_id=session['session_id'],
+        ip=ip_address,
+        user_agent=user_agent,
+        start_time=start_time
+    )
 
     return render_template('index.html', page_title="Welcome")
 
@@ -155,19 +200,20 @@ def search_form_post():
 def search_form_post():
     search_query = request.form['search-query']
     session_id = session['session_id']
+    timestamp=datetime.now().isoformat()
 
     # Guardar la consulta en memoria
     search_id = analytics_data.save_query_terms(search_query)
 
     # Guardar la consulta en SQLite
-    analytics_db.save_query(
+    analytics_csv.save_query(
         session_id=session_id,
         query_text=search_query,
-        timestamp=datetime.now().isoformat()
+        timestamp=timestamp
     )
 
     # Realizar la búsqueda
-    results = search_engine.search(search_query, search_id, corpus, idx, tf, idf, analytics_db)
+    results = search_engine.search(search_query, search_id, corpus, idx, tf, idf, analytics_csv)
 
     return render_template('results.html', results_list=results, page_title="Results", found_counter=len(results))
 
@@ -198,7 +244,7 @@ def track_session_start():
         start_time = datetime.now().isoformat()
 
         # Guarda los detalles en la tabla analytics
-        analytics_db.save_session(
+        analytics_csv.save_session(
             session_id=session['session_id'],
             ip=ip_address,
             user_agent=user_agent,
@@ -221,14 +267,14 @@ def track_session_end(exception=None):
         analytics_db.end_session(session['session_id'], end_time)
     #session['session_end'] = datetime.now().isoformat()
 '''
-@app.teardown_request
-def track_session_end(exception=None):
-    """
-    Marca el final de la sesión al cerrar la solicitud.
-    """
-    if 'session_id' in session:
-        end_time = datetime.now().isoformat()
-        analytics_db.end_session(session['session_id'], end_time)
+# @app.teardown_request
+# def track_session_end(exception=None):
+#     """
+#     Marca el final de la sesión al cerrar la solicitud.
+#     """
+#     if 'session_id' in session:
+#         end_time = datetime.now().isoformat()
+#         analytics_csv.end_session(session['session_id'], end_time)
 
 
 '''
@@ -282,7 +328,7 @@ def doc_details():
     description = document.description
 
     # Guarda el clic en la tabla analytics
-    analytics_db.save_click(
+    analytics_csv.save_click(
         session_id=session_id,
         doc_id=doc_id,
         title=title,
@@ -297,56 +343,54 @@ def doc_details():
 def stats():
     session_id = session.get('session_id')  # Get the current session ID
     
-    # Fetch clicked document timestamps for the current session
-    query = """
-        SELECT timestamp
-        FROM analytics
-        WHERE session_id = ? AND doc_id IS NOT NULL
-        ORDER BY timestamp
-    """
-    with sqlite3.connect(analytics_db.db_path) as conn:
-        timestamps = pd.read_sql_query(query, conn, params=(session_id,))['timestamp']
+    if not session_id:
+        return "Session ID not found.", 400
 
+    # Read the CSV file into a pandas DataFrame
+    df = pd.read_csv(CSV_FILE_PATH)
+
+    # Filter data for the current session
+    session_data = df[df['session_id'] == session_id]
+
+    # Calculate total session time (from first and last clicked documents)
     total_time = "N/A"
+    clicked_documents = session_data[session_data['doc_id'].notna()]
+    if not clicked_documents.empty:
+        timestamps = pd.to_datetime(clicked_documents['timestamp'])
+        # Find the earliest timestamp (first event of the session)
+        first_timestamp = timestamps.min()
+        current_time = pd.Timestamp.now()  # Current time
+        time_difference = current_time - first_timestamp  # Timedelta object
+
+        # Convert the timedelta to hours, minutes, and seconds
+        total_seconds = int(time_difference.total_seconds())  # Total seconds as integer
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+
+        # Format as "xx hours xx minutes xx seconds"
+        total_time = f"{hours} hours {minutes} minutes {seconds} seconds"
 
 
-    if not timestamps.empty:
-        # Convert timestamps to datetime
-        timestamps = pd.to_datetime(timestamps)
+    # Fetch clicked document details for visualization
+    clicked_documents = clicked_documents[['doc_id', 'title', 'description', 'timestamp']].sort_values(by='timestamp')
 
-        # Calculate total session time as the difference between the first and last clicks
-        total_time = str(timestamps.max() - timestamps.min())
-
-    # Fetch all clicked document details for visualization
-    query = """
-        SELECT doc_id, title, description, timestamp
-        FROM analytics
-        WHERE session_id = ? AND doc_id IS NOT NULL
-        ORDER BY timestamp
-    """
-    with sqlite3.connect(analytics_db.db_path) as conn:
-        df = pd.read_sql_query(query, conn, params=(session_id,))
-
-    print(df)
-    chart_html = "<p>No data available for clicked documents.</p>"
-
-    if not df.empty:
+    if not clicked_documents.empty:
         # Ensure document IDs or titles are sorted in the order of clicks
-        df['doc_label'] = df['doc_id'].astype(str)
+        clicked_documents['doc_label'] = clicked_documents['doc_id'].astype(str)
 
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        clicked_documents['timestamp'] = pd.to_datetime(clicked_documents['timestamp'])
 
         # Calculate time differences in minutes
-        df['time_diff_minutes'] = df['timestamp'].diff().dt.total_seconds() / 60
+        clicked_documents['time_diff_minutes'] = clicked_documents['timestamp'].diff().dt.total_seconds() / 60
 
         # Replace NaN in time_diff_minutes with 0 for the first document
-        df['time_diff_minutes'] = df['time_diff_minutes'].fillna(0)
+        clicked_documents['time_diff_minutes'] = clicked_documents['time_diff_minutes'].fillna(0)
 
         # Convert timestamps to a readable format for tooltips
-        df['timestamp_readable'] = df['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
+        clicked_documents['timestamp_readable'] = clicked_documents['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
 
         # Create the Altair chart with documents on X-axis and time differences on Y-axis
-        chart = alt.Chart(df).mark_line(point=True).encode(
+        chart = alt.Chart(clicked_documents).mark_line(point=True).encode(
             x=alt.X('doc_label:N', title='Clicked Documents', sort=None),  # Categorical X-axis
             y=alt.Y('time_diff_minutes:Q', title='Time Difference Between Clicks (Minutes)'),  # Quantitative Y-axis
             tooltip=['doc_label', 'timestamp_readable', 'time_diff_minutes']  # Add tooltips for more context
@@ -358,20 +402,17 @@ def stats():
 
         chart_html = chart.to_html()
 
-    # Fetch queries for the current session from the database
-    query = """
-        SELECT query
-        FROM analytics
-        WHERE session_id = ? AND query IS NOT NULL
-    """
-    with sqlite3.connect(analytics_db.db_path) as conn:
-        queries = pd.read_sql_query(query, conn, params=(session_id,))
+    else:
+        chart_html = "<p>No data available for clicked documents.</p>"
+
+    # Fetch queries for the current session from the CSV file
+    queries = session_data[session_data['query'].notna()]
 
     queries_list = [{"query": query} for query in queries['query'].tolist()]
 
-    # Prepare the table content
+    # Prepare the table content for the clicked documents
     table_data = []
-    for index, row in df.iterrows():
+    for index, row in clicked_documents.iterrows():
         table_data.append({
             'doc_id': row['doc_id'],
             'title': row['title'],
@@ -379,9 +420,8 @@ def stats():
             'timestamp': row['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
             'time_diff_minutes': row['time_diff_minutes']
         })
-    print(table_data)
-    print(queries_list)
 
+    # Prepare the data for rendering
     return render_template(
         'stats.html',
         clicks_data=table_data,
@@ -390,143 +430,88 @@ def stats():
         chart_html=chart_html
     )
 
-'''
-@app.route('/stats', methods=['GET'])
-def stats():
-    session_start = session.get('session_start')
-    session_end = session.get('session_end')
-    total_time = "N/A"
-
-    #session time
-    if session_start and session_end:
-        start_time = datetime.fromisoformat(session_start)
-        end_time = datetime.fromisoformat(session_end)
-        total_time = str(end_time - start_time)  # Total session time
-
-    #clicked documents 
-    clicked_docs = []
-    for doc_id, timestamp in analytics_data.fact_clicks.items(): #s'haura de canviar pels clicked documents segons sessió
-        row: Document = corpus[int(doc_id)]
-        clicked_docs.append(StatsDocument(row.id, row.title, row.description, row.doc_date, row.url, timestamp))
-
-    # queries
-    queries = [{"query": query} for query in analytics_data.fact_queries] #aqui tmb canviar per queries nomes de la sessió
-
-    df = pd.DataFrame(clicked_docs)
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
-    df['time_diff'] = df['timestamp'].diff().dt.total_seconds()
-
-    # Create the Altair chart
-    chart = alt.Chart(df).mark_line(point=True).encode(
-        x='timestamp:T',
-        y='time_diff:Q',
-        tooltip=['doc_id', 'title', 'time_diff']
-    ).properties(
-        title='Time Difference Between Document Clicks',
-        width=600,
-        height=400
-    )
-    chart_html = chart.to_html()
-
-    return render_template('stats.html',
-                           clicks_data=clicked_docs,
-                           queries=queries,
-                           total_time=total_time,
-                           chart_html=chart_html)
-'''
-
+# Function to get country info from IP
+def get_country_from_ip(ip):
+    try:
+        # Request the geolocation data using ipinfo.io
+        response = requests.get(f'http://ipinfo.io/{ip}/json')
+        data = response.json()
+        country = data.get('country', 'Unknown')
+        city = data.get('city', 'Unknown')
+        return country, city
+    except requests.RequestException:
+        # Return 'Unknown' if the request fails
+        return 'Unknown', 'Unknown'
+    
 @app.route('/dashboard', methods=['GET'])
 def dashboard():
-    # Fetch clicked documents data (doc_id, title, description, and click_count)
-    query = """
-    SELECT doc_id, title, description, COUNT(*) as counter
-    FROM analytics
-    WHERE doc_id IS NOT NULL
-    GROUP BY doc_id
-    ORDER BY counter DESC
-    """
+    # Read the CSV file into a pandas DataFrame
+    df = pd.read_csv(CSV_FILE_PATH)
 
-    with sqlite3.connect(analytics_db.db_path) as conn:
-        clicked_docs = pd.read_sql_query(query, conn)
+    # Filter out documents with no doc_id (for clicked docs analysis)
+    clicked_docs = df[df['doc_id'].notna()]
+
+    # Calculate the count of clicks for each document (doc_id, title, description)
+    clicked_docs_count = clicked_docs.groupby(['doc_id', 'title', 'description']).size().reset_index(name='counter')
+    clicked_docs_count = clicked_docs_count.sort_values(by='counter', ascending=False)
 
     # Prepare the visited documents list with doc_id, description, and click count
     visited_docs = []
-    for _, row in clicked_docs.iterrows():
+    for _, row in clicked_docs_count.iterrows():
         doc = ClickedDoc(row['doc_id'], row['description'], row['counter'])
         visited_docs.append(doc)
-    
-    
+
     # Prepare query data for analysis (number of terms, most common words)
     query_terms = []
-    query_query = """
-    SELECT query FROM analytics
-    WHERE query IS NOT NULL
-    """
-    queries = pd.read_sql_query(query_query, conn)
-    query_terms = [query.split() for query in queries['query']]  # List of lists of words
+    queries = df[df['query'].notna()]['query']
+
+    # Split each query into words
+    query_terms = [query.split() for query in queries.tolist()]  # List of lists of words
 
     # Flatten the list of query terms and remove stopwords
     all_query_terms = [term for sublist in query_terms for term in sublist]
     stop_words = set(stopwords.words('english'))
     filtered_query_terms = [term for term in all_query_terms if term.lower() not in stop_words]
 
-    # Word cloud generation
-    wordcloud = WordCloud(width=800, height=400).generate(' '.join(filtered_query_terms))
+    # Count the frequency of each term
+    word_counts = Counter(filtered_query_terms)
+
+    # Generate word cloud using word frequencies
+    wordcloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(word_counts)
+
+    # Save the word cloud to an image file
     wordcloud_img_path = 'static/images/wordcloud.png'
     wordcloud.to_file(wordcloud_img_path)
 
+    # Query length analysis
+    query_lengths = [len(query.split()) for query in queries.tolist()]
+
+    # Count the frequency of each query length
+    query_length_counts = Counter(query_lengths)
+
+    # Prepare data for plotting
+    length_data = list(query_length_counts.items())
+    length_data.sort()  # Sort by query length
     
-    # Check if the queries list is not empty
-    if not queries.empty:
-        # Calculate the number of terms in each query
-        query_lengths = [len(query.split()) for query in queries['query']]
+    # Separate lengths and counts for plotting
+    lengths, counts = zip(*length_data)
 
-        # Count the frequency of each query length
-        query_length_counts = Counter(query_lengths)
+    # Create a plot to show the frequency of each query length
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x=list(lengths), y=list(counts), color='red')
+    plt.title('Distribution of Query Lengths')
+    plt.xlabel('Query Length (Number of Terms)')
+    plt.ylabel('Frequency (Count of Queries)')
+    
+    # Save the plot
+    query_length_histogram_img = 'static/images/histogram.png'
+    plt.savefig(query_length_histogram_img)
+    plt.close()
 
-        # Prepare data for plotting
-        length_data = list(query_length_counts.items())
-        length_data.sort()  # Sort by query length
-        
-        # Separate lengths and counts for plotting
-        lengths, counts = zip(*length_data)
+    # Get the most common browser and OS per session
+    browsers = df[df['browser'].notna()]['browser'].tolist()
+    operating_systems = df[df['operating_system'].notna()]['operating_system'].tolist()
 
-        # Create a plot to show the frequency of each query length
-        plt.figure(figsize=(10, 6))
-        sns.barplot(x=list(lengths), y=list(counts), color='red')
-        plt.title('Distribution of Query Lengths')
-        plt.xlabel('Query Length (Number of Terms)')
-        plt.ylabel('Frequency (Count of Queries)')
-        
-        # Save the plot
-        query_length_histogram_img = 'static/images/histogram.png'
-        plt.savefig(query_length_histogram_img)
-    else:
-        # Handle the case where there are no queries
-        query_length_histogram_img = None
-
-   
-
-    # Get the most common browser and OS per session (you can also just select the first, depending on your requirement)
-    browser_query = """
-    SELECT session_id, browser
-    FROM analytics
-    WHERE browser IS NOT NULL
-    GROUP BY session_id, browser
-    """
-
-    os_query = """
-    SELECT session_id, operating_system
-    FROM analytics
-    WHERE operating_system IS NOT NULL
-    GROUP BY session_id, operating_system
-    """
-
-    # Fetch the data from the database
-    browsers = pd.read_sql_query(browser_query, conn)['browser'].tolist()
-    operating_systems = pd.read_sql_query(os_query, conn)['operating_system'].tolist()
-
-    print(browsers)
     # Count the occurrences of each browser and operating system
     browser_count = Counter(browsers)
     os_count = Counter(operating_systems)
@@ -539,6 +524,7 @@ def dashboard():
     plt.ylabel('Count')
     browser_count_plot_img = 'static/images/browser_distribution.png'
     browser_count_plot.savefig(browser_count_plot_img)
+    plt.close()
 
     # Plot OS distribution
     os_count_plot = plt.figure(figsize=(8, 6))
@@ -548,16 +534,10 @@ def dashboard():
     plt.ylabel('Count')
     os_count_plot_img = 'static/images/os_distribution.png'
     os_count_plot.savefig(os_count_plot_img)
+    plt.close()
 
-    
-    # Query session IDs and timestamps from the database
-    session_query = """
-    SELECT session_id, timestamp 
-    FROM analytics
-    WHERE timestamp IS NOT NULL
-    """
-    with sqlite3.connect(analytics_db.db_path) as conn:
-        session_data = pd.read_sql_query(session_query, conn)
+    # Query session IDs and timestamps from the CSV file
+    session_data = df[df['timestamp'].notna()][['session_id', 'timestamp']]
 
     # Ensure timestamps are in datetime format and extract dates
     session_data['timestamp'] = pd.to_datetime(session_data['timestamp'])
@@ -584,102 +564,15 @@ def dashboard():
     plt.savefig(unique_sessions_plot_img)
     plt.close()
 
-'''
-@app.route('/dashboard', methods=['GET'])
-def dashboard():
-    # Prepare the clicked documents data
-    visited_docs = []
-    for doc_id in analytics_data.fact_clicks.keys():
-        d: Document = corpus[int(doc_id)]
-        doc = ClickedDoc(doc_id, d.description, analytics_data.fact_clicks[doc_id])
-        visited_docs.append(doc)
-
-    # Simulate sorting by ranking (most clicked first)
-    visited_docs.sort(key=lambda doc: doc.counter, reverse=True)
-
-    # Prepare query data for analysis (number of terms, most common words)
-    query_terms = [query.split() for query in analytics_data.fact_queries]  # List of lists of words
-    all_query_terms = [term for sublist in query_terms for term in sublist]  # Flatten list
-
-    # Remove stopwords
-    stop_words = set(stopwords.words('english'))
-    filtered_query_terms = [term for term in all_query_terms if term.lower() not in stop_words]
-
-    # Word cloud generation
-    wordcloud = WordCloud(width=800, height=400).generate(' '.join(filtered_query_terms))
-    wordcloud_img = wordcloud.to_image()
-
-    # Histogram of number of terms in queries
-    query_lengths = [len(query.split()) for query in analytics_data.fact_queries]
-    query_length_histogram = plt.figure(figsize=(6, 4))
-    sns.histplot(query_lengths, bins=range(min(query_lengths), max(query_lengths) + 1), kde=False)
-    plt.title('Histogram of Query Lengths')
-    plt.xlabel('Number of Terms in Query')
-    plt.ylabel('Frequency')
-    query_length_histogram_img = 'static/images/histogram.png'
-    query_length_histogram.savefig(query_length_histogram_img)
-
-    # Browser and OS distribution (you'll need to parse this from the user-agent data stored earlier)
-    browsers = [agent.get('browser', 'unknown') for agent in analytics_data.fact_clicks.values()]
-    operating_systems = [agent.get('os', 'unknown') for agent in analytics_data.fact_clicks.values()]
-
-    # Plot browser distribution
-    browser_count = Counter(browsers)
-    browser_count_plot = plt.figure(figsize=(8, 6))
-    sns.barplot(x=list(browser_count.keys()), y=list(browser_count.values()))
-    plt.title('Browser Distribution')
-    plt.xlabel('Browser')
-    plt.ylabel('Count')
-    browser_count_plot_img = 'static/images/browser_distribution.png'
-    browser_count_plot.savefig(browser_count_plot_img)
-
-    # Plot OS distribution
-    os_count = Counter(operating_systems)
-    os_count_plot = plt.figure(figsize=(8, 6))
-    sns.barplot(x=list(os_count.keys()), y=list(os_count.values()))
-    plt.title('Operating System Distribution')
-    plt.xlabel('OS')
-    plt.ylabel('Count')
-    os_count_plot_img = 'static/images/os_distribution.png'
-    os_count_plot.savefig(os_count_plot_img)
-
-    # Plot visitors per day (using a timestamp from clicks)
-    click_times = [doc.timestamp for doc in visited_docs]
-    visitor_dates = pd.to_datetime(click_times).dt.date
-    visitors_per_day = pd.Series(visitor_dates).value_counts().sort_index()
-    visitors_per_day_plot = visitors_per_day.plot(kind='line', figsize=(10, 6))
-    visitors_per_day_plot.set_title('Visitors Per Day')
-    visitors_per_day_plot.set_xlabel('Date')
-    visitors_per_day_plot.set_ylabel('Number of Visitors')
-    visitors_per_day_plot_img = 'static/images/visitors_per_day.png'
-    visitors_per_day_plot.get_figure().savefig(visitors_per_day_plot_img)
-
-    # Collect IP-related data (IP, Country, City, Browser, OS)
-    visitor_data = []
-    for ip, data in analytics_data.fact_clicks.items():
-        country = data['country']
-        city = data['city']
-        browser = data['browser']
-        os = data['os']
-        
-        # Create a row for each visitor
-        visitor_data.append({
-            'ip': ip,
-            'country': country,
-            'city': city,
-            'browser': browser,
-            'os': os
-        })
     # Render the dashboard template with all the data and visualizations
     return render_template('dashboard.html', 
                            visited_docs=visited_docs,
-                           visitor_data=visitor_data,
-                           wordcloud_img=wordcloud_img,
+                           wordcloud_img_path=wordcloud_img_path,
                            query_length_histogram_img=query_length_histogram_img,
                            browser_count_plot_img=browser_count_plot_img,
                            os_count_plot_img=os_count_plot_img,
-                           visitors_per_day_plot_img=visitors_per_day_plot_img)
-'''
+                           unique_sessions_plot_img=unique_sessions_plot_img)
+
 
 @app.route('/sentiment')
 def sentiment_form():
@@ -698,28 +591,3 @@ def sentiment_form_post():
 
 if __name__ == "__main__":
     app.run(port=8088, host="0.0.0.0", threaded=False, debug=True)
-
-@app.route('/view_clicks')
-def view_clicks():
-    """
-    Display the list of clicks from the analytics table.
-    """
-    query = "SELECT session_id, doc_id, title, description, timestamp FROM analytics WHERE doc_id IS NOT NULL"
-    with sqlite3.connect(analytics_db.db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute(query)
-        clicks = cursor.fetchall()
-    return render_template('view_clicks.html', clicks=clicks)
-
-
-@app.route('/clicks_count')
-def clicks_count():
-    """
-    Display the total number of clicks.
-    """
-    query = "SELECT COUNT(*) FROM analytics WHERE doc_id IS NOT NULL"
-    with sqlite3.connect(analytics_db.db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute(query)
-        total_clicks = cursor.fetchone()[0]
-    return f"Total clicks: {total_clicks}"
