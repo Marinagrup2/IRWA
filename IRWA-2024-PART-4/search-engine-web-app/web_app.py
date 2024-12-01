@@ -152,7 +152,7 @@ def index():
     user_agent = request.headers.get('User-Agent')
     print("Raw user browser:", user_agent)
 
-    ip_address = request.remote_addr
+    ip_address = generate_realistic_ip()
     agent = httpagentparser.detect(user_agent)
 
     print("Remote IP: {} - JSON user browser {}".format(ip_address, agent))
