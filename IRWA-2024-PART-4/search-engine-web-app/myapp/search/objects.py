@@ -47,10 +47,10 @@ class StatsDocument:
 
 
 class ResultItem:
-    def __init__(self, id, title, description, doc_date, url, ranking):
+    def __init__(self, id, title, description, doc_date, url, doc_info):
         self.id = id
         self.title = title
         self.description = description
         self.doc_date = doc_date
         self.url = url
-        self.ranking = ranking
+        self.doc_info = doc_info

@@ -1,3 +1,7 @@
+{% extends "base.html" %}
+{% block page_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,11 +9,31 @@
     <title>Document Detail - IRWA Search Engine</title>
 </head>
 <body>
-<div><a href="#" onclick="history.go(-1)">Go Back</a></div>
-<div><a href="#" onclick="history.go(-2)">Go Back 2 pages</a></div>
-<div><a href="#" onclick="history.go(-3)">Go Back 3 pages</a></div>
-<div><a href="#" onclick="history.go(-4)">Go Back 4 pages</a></div>
-<div><a href="/stats" >Stats</a></div>
-<div><a href="/dashboard" >Dashboard</a></div>
+    <p style="text-align:center; margin:10px 0;"> 
+       <b> The tweet you selected is: </b> {{tweet.description}}  
+    </p>
+
+    <p style="text-align:center; margin:10px 0; color:red"> 
+        <b> Likes &#10084;: {{tweet.likes}} </b>
+    </p>
+
+    <p style="text-align:center; margin:10px 0; color:blue"> 
+        <b> Retweets &#128257;: {{tweet.retweets}} </b>
+    </p>
+
+    <p style="text-align:center; margin:10px 0;"> 
+        <b>The extacted hashtags are: </b> {{tweet.hashtags}}
+    </p>
+
+    <p style="text-align:center; margin:10px 0;"> 
+        <a href="{{ tweet.url }}"><b>Access the original tweet </b></a>
+    </p>
+
+    <div><a href="#" onclick="history.go(-1)">Go Back</a></div>
+    <div><a href="/stats" >Observe Stats so far</a></div>
+    <div><a href="/dashboard" >Observe Dashboard so far</a></div>
+
 </body>
 </html>
+
+{% endblock %}
