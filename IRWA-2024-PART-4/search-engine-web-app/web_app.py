@@ -10,6 +10,7 @@ from flask import Flask, render_template, session
 from flask import request
 
 from myapp.analytics.analytics_data import AnalyticsData, ClickedDoc
+from myapp.search.objects import ResultItem, Document
 from myapp.search.load_corpus import load_corpus
 from myapp.search.objects import Document, StatsDocument
 from myapp.search.search_engine import SearchEngine
@@ -29,6 +30,8 @@ from myapp.analytics.analytics_database import AnalyticsCSV
 import sqlite3
 import requests
 import csv
+import geoip2.database  
+import plotly.express as px
 
 
 # Initialize the analytics CSV handler
@@ -39,21 +42,7 @@ analytics_csv.init_csv()
 
 ##############3
 # En caso de que por cada sesion queramos resetear el numero de clicks en count_clicks.py descomentar el codigo siguiente
-'''
-def reset_clicks():
-    """
-    Reset the clicks table by deleting all records.
-    """
-    query = "DELETE FROM click"
-    with sqlite3.connect(analytics_db.db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute(query)
-        conn.commit()
-    print("Clicks table has been reset.")
 
-# Llama a esta función al iniciar la aplicación
-reset_clicks()
-'''
 # Ensure you have the necessary NLTK resources
 nltk.download('stopwords')
 
@@ -90,6 +79,9 @@ path, filename = os.path.split(full_path)
 # load documents corpus into memory.
 file_path = path + "/tweets-data-who.json"
 CSV_FILE_PATH = path +  "/analytics.csv"
+# Path to the GeoLite2 database
+GEOIP_DB_PATH = path + '/GeoLite2-City.mmdb'
+
 corpus = load_corpus(file_path)
 print("loaded corpus. first elem:", list(corpus.values())[0])
 
@@ -125,6 +117,28 @@ def get_last_timestamp_for_session(file_path, session_id):
                 # Update the last timestamp if found
                 last_timestamp = row['timestamp'] #reads all rows for the session id and stores the last timestamp
     return last_timestamp
+
+def generate_realistic_ip():
+    """
+    Generate a realistic, geographically valid IPv4 address.
+    """
+    # Define common public IP address ranges
+    public_ip_ranges = [
+        (1, 126),       # APNIC region (Asia-Pacific)
+        (128, 191),     # RIPE region (Europe/Middle East/Central Asia)
+        (192, 223),     # ARIN/LACNIC region (Americas)
+    ]
+    
+    # Pick a random range
+    first_octet_range = random.choice(public_ip_ranges)
+    first_octet = random.randint(first_octet_range[0], first_octet_range[1])
+    
+    # Generate other octets
+    second_octet = random.randint(0, 255)
+    third_octet = random.randint(0, 255)
+    fourth_octet = random.randint(0, 255)
+    
+    return f"{first_octet}.{second_octet}.{third_octet}.{fourth_octet}"
 
 # Home URL "/"
 @app.route('/')
@@ -178,24 +192,7 @@ def index():
 
     return render_template('index.html', page_title="Welcome")
 
-'''
-@app.route('/search', methods=['POST'])
-def search_form_post():
-    search_query = request.form['search-query']
 
-    session['last_search_query'] = search_query
-
-    search_id = analytics_data.save_query_terms(search_query)
-
-    results = search_engine.search(search_query, search_id, corpus)
-
-    found_count = len(results)
-    session['last_found_count'] = found_count
-    
-    print(session)
-
-    return render_template('results.html', results_list=results, page_title="Results", found_counter=found_count)
-'''
 @app.route('/search', methods=['POST'])
 def search_form_post():
     search_query = request.form['search-query']
@@ -213,9 +210,18 @@ def search_form_post():
     )
 
     # Realizar la búsqueda
-    results = search_engine.search(search_query, search_id, corpus, idx, tf, idf, analytics_csv)
+    search_method = request.form['search_method']
+    results = search_engine.search(search_query, search_id, corpus, idx, tf, idf, search_method)
 
-    return render_template('results.html', results_list=results, page_title="Results", found_counter=len(results))
+    # Only show the top 20 result (so computer doesn't crash)
+    ranked_docs = []
+    top = 20
+    
+    for d_id in results[:top]:
+        item: Document = corpus[d_id]
+        ranked_docs.append(ResultItem(item.id, item.title, item.description, item.doc_date, item.url, random.random()))
+
+    return render_template('results.html', results_list=ranked_docs, page_title="Results", found_counter=len(results))
 
 
 '''
@@ -336,6 +342,8 @@ def doc_details():
         timestamp=timestamp
     )
 
+    #tweet: Document = corpus[doc_id]
+
     return render_template('doc_details.html', title=title, description=description)
 
 
@@ -447,6 +455,45 @@ def get_country_from_ip(ip):
 def dashboard():
     # Read the CSV file into a pandas DataFrame
     df = pd.read_csv(CSV_FILE_PATH)
+
+    # Extract IP addresses and resolve them to countries
+    # Extract IP addresses and resolve them to countries
+    geo_data = []
+    with geoip2.database.Reader(GEOIP_DB_PATH) as reader:
+        for ip in df['ip_address'].dropna().unique():
+            try:
+                response = reader.city(ip)
+                country = response.country.name
+                geo_data.append((ip, country))
+            except geoip2.errors.AddressNotFoundError:
+                geo_data.append((ip, 'Unknown'))
+
+    # Convert geo_data to DataFrame and merge with the original session data
+    geo_df = pd.DataFrame(geo_data, columns=['ip_address', 'country'])
+    df = df.merge(geo_df, on='ip_address', how='left')
+
+    # Count sessions by country
+    country_session_count = df.groupby('country')['session_id'].nunique().reset_index()
+    country_session_count.columns = ['country', 'sessions']
+
+    # Create a choropleth map using Plotly
+    fig = px.choropleth(
+        country_session_count,
+        locations='country',
+        locationmode='country names',
+        color='sessions',
+        title='Sessions by Country',
+        color_continuous_scale='Viridis',
+        labels={'sessions': 'Number of Sessions'}
+    )
+
+    # Save the map as an HTML file
+    map_html_path = 'static/maps/sessions_by_country.html'
+    fig.write_html(map_html_path)
+
+    # Prepare the IP-to-Country table to display
+    ip_country_table = geo_df.to_html(classes='table table-striped', index=False)
+
 
     # Filter out documents with no doc_id (for clicked docs analysis)
     clicked_docs = df[df['doc_id'].notna()]
@@ -571,7 +618,9 @@ def dashboard():
                            query_length_histogram_img=query_length_histogram_img,
                            browser_count_plot_img=browser_count_plot_img,
                            os_count_plot_img=os_count_plot_img,
-                           unique_sessions_plot_img=unique_sessions_plot_img)
+                           unique_sessions_plot_img=unique_sessions_plot_img,
+                           sessions_by_country_map=map_html_path,
+                           ip_country_table=ip_country_table)
 
 
 @app.route('/sentiment')

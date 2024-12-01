@@ -22,30 +22,19 @@
             {% endfor %}
         </tbody>
     </table>
-    <!-- Display IP, Country, City, Browser, OS -->
-    <h4>Visitor Information</h4>
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>IP Address</th>
-                <th>Country</th>
-                <th>City</th>
-                <th>Browser</th>
-                <th>Operating System</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for visitor in visitor_data %}
-                <tr>
-                    <td>{{ visitor.ip }}</td>
-                    <td>{{ visitor.country }}</td>
-                    <td>{{ visitor.city }}</td>
-                    <td>{{ visitor.browser }}</td>
-                    <td>{{ visitor.os }}</td>
-                </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <!-- Display IP map -->
+    <div>
+        <h2>Sessions by Country</h2>
+        <iframe src="{{ sessions_by_country_map }}" width="100%" height="600px" style="border:none;"></iframe>
+    </div>
+    
+    <!-- Display the IP-to-Country Table -->
+    <div>
+        <h3>IP Addresses and Corresponding Countries</h3>
+        <div>
+            {{ ip_country_table | safe }}  <!-- Render the HTML table -->
+        </div>
+    </div>
 
     <!-- Word Cloud Visualization -->
     <h4>Word Cloud:</h4>

@@ -30,22 +30,13 @@ def build_demo_results(corpus: dict, search_id):
 class SearchEngine:
     """educational search engine"""
 
-    def search(self, search_query, search_id, corpus, index, tf, idf, analytics_db):
+    def search(self, search_query, search_id, corpus, index, tf, idf, search_method):
         print("Search query:", search_query)
 
         results = []
         ##### your code here #####
         #results = build_demo_results(corpus, search_id)  # replace with call to search algorithm
-        results = search_in_corpus(corpus, search_query, index, tf, idf, analytics_db)
+        results = search_in_corpus(corpus, search_query, index, tf, idf, search_method)
 
         ##### your code here #####
-        ranked_docs = []
-        top = 20
-        all_docs = list(corpus.values())
-        
-        for d_id in results[:top]:
-            item: Document = corpus[d_id]
-            ranked_docs.append(ResultItem(item.id, item.title, item.description, item.doc_date,
-                              "doc_details?id={}&search_id={}&param2=2".format(item.id, search_id), random.random()))
-
-        return ranked_docs
+        return results

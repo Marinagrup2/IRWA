@@ -5,11 +5,32 @@
         <p>&nbsp;</p>
         <p>&nbsp;</p>
         <p>&nbsp;</p>
-        <form class="d-flex" method="POST" onSubmit='return validate();' action="/search">
-            <input class="form-control me-2" name="search-query" type="search" placeholder="Search" aria-label="Search"
-                   autofocus="autofocus">
-            <button class="btn btn-primary" type="submit" onclick='this.form.submit();'>Search</button>
-            <input name="upf-irwa-hidden" type="hidden" value="123">
+        <form method="POST" onSubmit='return validate();' action="/search">
+            <div class="d-flex">
+                <input class="form-control me-2" name="search-query" type="search" placeholder="Search" aria-label="Search"
+                    autofocus="autofocus">
+                <button class="btn btn-primary" type="submit" onclick='this.form.submit();'>Search</button>
+                <input name="upf-irwa-hidden" type="hidden" value="123">
+            </div>
+            <div style="display: flex; justify-content: center;">
+                <div style="padding: 0px 30px;">
+                    <input type="radio" id="tf_idf_cosine_similarity" name="search_method" value="tf_idf_cosine_similarity" checked>
+                    <label for="tf_idf_cosine_similarity">Method tf_idf + cosine_similarity</label><br>
+                </div>
+                <div style="padding: 0px 30px;">
+                    <input type="radio" id="our_score_cosine_similarity" name="search_method" value="our_score_cosine_similarity" checked>
+                    <label for="our_score_cosine_similarity">Method our_score + cosine_similarity</label><br>
+                </div>
+                <div style="padding: 0px 30px;">
+                    <input type="radio" id="BM25" name="search_method" value="BM25" checked>
+                    <label for="BM25">Method BM25</label><br>
+                </div>
+                <div style="padding: 0px 30px;">
+                    <input type="radio" id="w2v_cosine_similarity" name="search_method" value="w2v_cosine_similarity" checked>
+                    <label for="w2v_cosine_similarity">Method World2Vec + cosine_similarity</label><br>
+                </div>                
+            </div>
+
         </form>
         <p>&nbsp;</p>
         <p>&nbsp;</p>
