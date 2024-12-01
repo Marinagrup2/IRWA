@@ -219,7 +219,8 @@ def search_form_post():
     
     for d_id in results[:top]:
         item: Document = corpus[d_id]
-        ranked_docs.append(ResultItem(item.id, item.title, item.description, item.doc_date, item.url, random.random()))
+        ranked_docs.append(ResultItem(item.id, item.title, item.description, item.doc_date, 
+                                 "doc_details?id={}&search_id={}&param2=2".format(item.id, search_id), random.random()))
 
     return render_template('results.html', results_list=ranked_docs, page_title="Results", found_counter=len(results))
 
