@@ -40,9 +40,6 @@ analytics_csv = AnalyticsCSV('analytics.csv')
 # Initialize the CSV file (creates the file with headers if it doesn't exist)
 analytics_csv.init_csv()
 
-##############3
-# En caso de que por cada sesion queramos resetear el numero de clicks en count_clicks.py descomentar el codigo siguiente
-
 # Ensure you have the necessary NLTK resources
 nltk.download('stopwords')
 
@@ -223,24 +220,6 @@ def search_form_post():
 
     return render_template('results.html', results_list=ranked_docs, page_title="Results", found_counter=len(results))
 
-
-'''
-@app.before_request
-def track_session_start():
-    """Track session start."""
-    if 'session_id' not in session:
-        session_id = random.randint(0, 100000)
-        session['session_id'] = session_id
-        analytics_db.save_session(
-            session_id=session_id,
-            ip=request.remote_addr,
-            user_agent=request.headers.get('User-Agent'),
-            start_time=datetime.now().isoformat()
-        )
-
-'''
-
-
 @app.before_request
 def track_session_start():
     if 'session_id' not in session:
@@ -256,66 +235,6 @@ def track_session_start():
             user_agent=user_agent,
             start_time=start_time
         )
-
-    
-
-'''
-@app.teardown_request
-def track_session_end(exception=None):
-    """Track session end time."""
-    if 'session_id' in session:
-        end_time = datetime.now().isoformat()
-
-        # Finalizar la sesión en memoria
-        analytics_data.end_session(session['session_id'], end_time)
-
-        # Finalizar la sesión en SQLite
-        analytics_db.end_session(session['session_id'], end_time)
-    #session['session_end'] = datetime.now().isoformat()
-'''
-# @app.teardown_request
-# def track_session_end(exception=None):
-#     """
-#     Marca el final de la sesión al cerrar la solicitud.
-#     """
-#     if 'session_id' in session:
-#         end_time = datetime.now().isoformat()
-#         analytics_csv.end_session(session['session_id'], end_time)
-
-
-'''
-@app.route('/doc_details', methods=['GET'])
-def doc_details():
-    # getting request parameters:
-    # user = request.args.get('user')
-
-    print("doc details session: ")
-    print(session)
-    
-
-    res = session["some_var"]
-
-    print("recovered var from session:", res)
-
-    # get the query string parameters from request
-    clicked_doc_id = request.args["id"]
-    search_id = int(request.args["search_id"])  # Transform to Integer
-    timestamp = datetime.now() #time when user clicked on that doc
-
-    p1 = int(request.args["search_id"])  # transform to Integer
-    p2 = int(request.args["param2"])  # transform to Integer
-    print("click in id={}".format(clicked_doc_id))
-
-    # Update analytics_data with clicked document and timestamp
-    analytics_db.save_click(
-        session_id=session_id,
-        doc_id=clicked_doc_id,
-        timestamp=datetime.now().isoformat()
-    )
-    print("fact_clicks count for id={} is {}".format(clicked_doc_id, analytics_data.fact_clicks[clicked_doc_id]))
-
-    return render_template('doc_details.html')
-'''
 
 @app.route('/doc_details', methods=['GET'])
 def doc_details():
