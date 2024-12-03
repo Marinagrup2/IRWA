@@ -202,7 +202,7 @@ def rank_documents_your_score(terms, docs, index, idf, tf, corpus):
 
         # Compute the final score by combining the 3 scores
         your_score = 0.7 * cosine_sim + 0.2 * like_score + 0.2 * retweet_score
-        doc_scores.append([your_score, doc])
+        doc_scores.append([your_score, doc_id])
 
     doc_scores.sort(reverse=True)
     result_docs = [x[1] for x in doc_scores]
