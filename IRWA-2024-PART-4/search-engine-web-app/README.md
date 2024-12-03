@@ -77,6 +77,17 @@ This will load the python virtualenv for the project.
 pip install Flask pandas nltk faker
 ```
 
+### Updating numpy and gensim (for gensim to work correctly, it is required a python version greater than 3.7)
+```bash
+pip install --upgrade numpy
+pip install --update gensim
+```
+
+### With this setup, maybe the code returns error because of non-existing modules. If this is the case use the following command to install the required modules
+```bash
+pip install <required_module_name>
+```
+
 Enjoy!
 
 
